@@ -1,21 +1,19 @@
 name: cron_job
 
 on:
-  push:                    # 新增：当你修改文件保存后，自动运行
+  push:                    # 只要你点击保存，任务就会立刻启动
     branches:
       - main
-  workflow_dispatch:      # 保留：手动点击按钮运行的功能
+  workflow_dispatch:      # 保留手动点击 Run workflow 的按钮
   schedule:
-    - cron: '0 0 * * *'    # 每天 UTC 时间 0点（北京时间早8点）自动运行
+    - cron: '0 0 * * *'    # 每天北京时间早8点自动更新
 
 jobs:
   build:
-    runs-on: ubuntu-latest # 优化：使用最新镜像，排队最快
+    runs-on: ubuntu-latest # 使用最新服务器，减少排队时间
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.WORK_TOKEN }}
+        uses: actions/checkout@v3 # 删除了报错的 token 要求，直接使用默认权限
     
       - name: Set up Python 3.9
         uses: actions/setup-python@v4
@@ -32,8 +30,8 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           CUSTOM_MODEL: ${{ secrets.CUSTOM_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          U_NAME: ${{ secrets.U_NAME }}
-          # 如果你的 main.py 需要这个变量发送微信，请确保它存在
+          U_NAME: ${{ github.repository_owner }}
+          # 确保你在 Settings 里配置了 WECHAT_WEBHOOK 才能发到微信
           WECHAT_WEBHOOK: ${{ secrets.WECHAT_WEBHOOK }} 
         run: |
           python main.py
@@ -45,5 +43,6 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/*
           git add README*
+          # 如果内容没更新，这一步会安全跳过，不会报错
           git commit -m "Auto Build at `date +"%Y-%m-%d %H:%M"`" || echo "No changes to commit"
           git push
