@@ -52,11 +52,8 @@
 
 <a href="https://www.buymeacoffee.com/yinan" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
-- https://brett.trpstra.net/brettterpstra -> https://yinan-c.github.io/RSS-GPT/brett-terpstra.xml
-- https://meta.appinn.net/tag/chrome.rss, https://meta.appinn.net/tag/ios.rss, https://meta.appinn.net/tag/macos.rss -> https://yinan-c.github.io/RSS-GPT/appinn.xml
-- https://rknight.me/feed.xml -> https://yinan-c.github.io/RSS-GPT/robb-knight.xml
-- https://stephanango.com/feed.xml -> https://yinan-c.github.io/RSS-GPT/steph-ango.xml
-- https://lopespm.com/atom.xml -> https://yinan-c.github.io/RSS-GPT/byte-tank.xml
-- https://rsshub.app/paulgraham/articles -> https://yinan-c.github.io/RSS-GPT/paul-graham.xml
-- https://nesslabs.com/feed -> https://yinan-c.github.io/RSS-GPT/ness-labs.xml
-- https://manuelmoreale.com/feed/rss -> https://yinan-c.github.io/RSS-GPT/manuel-moreale.xml
+- https://www.futuretools.io/rss -> https://724914703.github.io/RSS-GPT/Future-Tools-AI趋势.xml
+- https://www.framer.com/blog/feed.xml -> https://724914703.github.io/RSS-GPT/Framer-AI工作流.xml
+- https://sspai.com/feed -> https://724914703.github.io/RSS-GPT/少数派-AI生产力.xml
+- https://www.bentobottle.com/feed -> https://724914703.github.io/RSS-GPT/Bento-Bottle设计周报.xml
+- https://blog.logrocket.com/ux-design/feed/ -> https://724914703.github.io/RSS-GPT/LogRocket-UX进阶.xml

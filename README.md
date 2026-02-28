@@ -65,3 +65,9 @@ I will consider hosting more feeds in the future. Email me or submit an issue if
 - https://nesslabs.com/feed -> https://yinan-c.github.io/RSS-GPT/ness-labs.xml
 - https://manuelmoreale.com/feed/rss -> https://yinan-c.github.io/RSS-GPT/manuel-moreale.xml
   
+
+- https://www.futuretools.io/rss -> https://724914703.github.io/RSS-GPT/Future-Tools-AI趋势.xml
+- https://www.framer.com/blog/feed.xml -> https://724914703.github.io/RSS-GPT/Framer-AI工作流.xml
+- https://sspai.com/feed -> https://724914703.github.io/RSS-GPT/少数派-AI生产力.xml
+- https://www.bentobottle.com/feed -> https://724914703.github.io/RSS-GPT/Bento-Bottle设计周报.xml
+- https://blog.logrocket.com/ux-design/feed/ -> https://724914703.github.io/RSS-GPT/LogRocket-UX进阶.xml
