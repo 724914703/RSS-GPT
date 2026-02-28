@@ -30,7 +30,7 @@ custom_model = os.environ.get('CUSTOM_MODEL')
 deployment_url = f'https://{U_NAME}.github.io/RSS-GPT/'
 BASE =get_cfg('cfg', 'BASE')
 keyword_length = int(get_cfg('cfg', 'keyword_length'))
-summary_length = int(get_cfg('cfg', 'summary_length'))
+_length = int(get_cfg('cfg', 'summary_length'))
 language = get_cfg('cfg', 'language')
 
 def fetch_feed(url, log_file):
@@ -160,9 +160,9 @@ def gpt_summary(query,model,language):
             {"role": "user", "content": query},
             {"role": "assistant", "content": f"""你现在是一位拥有10年经验的资深设计总监和AI原住民。
 请用中文深度总结这篇文章：
-1. 【最新AI消息】：提炼核心技术突破点以及趋势。
-2. 【实用工作流】：如果涉及实操，拆解出“输入-处理-输出”的具体步骤。
-3. 【行业思考】：分析该信息对设计师是替代还是赋能？给出具体建议。
+1. 提炼最新AI工具及其对设计的核心突破
+2. 拆解文中提到的高效工作流
+3. 分析该技术对设计师职业的影响并给出行动建议。请使用专业的中文
 先提取出{keyword_length}个关键词在同一行，然后换行，在{summary_length}字内按上述要点输出。
 输出格式要求：必须以 '<br><br>总结:' 开头（保留这两个HTML换行符）。"""}
         ]
