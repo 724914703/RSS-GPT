@@ -1,48 +1,76 @@
 import feedparser
 import configparser
 import os
-import datetime
 import requests
 import google.generativeai as genai
-from jinja2 import Template
 from bs4 import BeautifulSoup
-import re
 from fake_useragent import UserAgent
 
-# --- 基础配置读取 ---
+# --- 1. 基础配置读取 ---
 config = configparser.ConfigParser()
 config.read('config.ini')
 secs = config.sections()
 
 # 从 GitHub Secrets 获取变量
-# 注意：现在这里直接放你的 Gemini API Key
 GEMINI_API_KEY = os.environ.get('OPENAI_API_KEY') 
 WECHAT_WEBHOOK = os.environ.get('WECHAT_WEBHOOK')
-U_NAME = os.environ.get('U_NAME')
-
 BASE = config.get('cfg', 'BASE', fallback='docs/').strip('"')
-keyword_length = int(config.get('cfg', 'keyword_length', fallback='5'))
-summary_length = int(config.get('cfg', 'summary_length', fallback='800'))
-language = config.get('cfg', 'language', fallback='zh')
 
-# --- 功能函数 ---
+# --- 2. 核心功能函数 ---
 
 def send_wechat(title, link, summary):
-    """把好消息发到企业微信"""
-    if not WECHAT_WEBHOOK:
-        return
+    """把好消息发到企业微信机器人"""
+    if not WECHAT_WEBHOOK: return
     clean_summary = summary.replace('<br>', '\n').replace('总结:', '📌 设计总监简报:')
-    content = f"🚀 **发现新动态！**\n\n**标题**: {title}\n**原文**: {link}\n\n{clean_summary}"
+    content = f"🚀 **全网 AI 发现**\n\n**标题**: {title}\n**原文**: {link}\n\n{clean_summary}"
     try:
         requests.post(WECHAT_WEBHOOK, json={"msgtype": "markdown", "markdown": {"content": content}}, timeout=10)
     except: pass
 
 def gpt_summary(text):
-    """调用 Gemini 官方大脑进行总结"""
-    if not GEMINI_API_KEY:
-        return "未配置 API Key"
-    
+    """调用 Gemini 免费脑子"""
+    if not GEMINI_API_KEY: return "未配置 API Key"
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        # 使用最适合小白、免费额度大的 flash 模型
         model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = f"你是一位资深设计总监，请用中文总结以下内容的AI工具突破、工作流和建议，300字内，以'<br><br>总结:'开头：\n\n{text}"
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"总结失败: {str(e)}"
+
+def clean_html(html):
+    """清理网页垃圾"""
+    soup = BeautifulSoup(html, "html.parser")
+    for s in soup(["script", "style", "img", "a", "video"]): s.decompose()
+    return soup.get_text()
+
+def process_feed(sec):
+    """处理每一个订阅源"""
+    name = config.get(sec, 'name').strip('"')
+    url_list = config.get(sec, 'url').strip('"').split(',')
+    
+    for url in url_list:
+        try:
+            ua = UserAgent()
+            resp = requests.get(url, headers={'User-Agent': ua.random}, timeout=30)
+            feed = feedparser.parse(resp.text)
+            
+            # 只取最新的一条，防止轰炸微信
+            if feed.entries:
+                entry = feed.entries[0]
+                content = clean_html(getattr(entry, 'summary', entry.title))
+                summary_text = gpt_summary(content)
+                
+                if "总结失败" not in summary_text:
+                    send_wechat(entry.title, entry.link, summary_text)
+                    print(f"✅ 成功发送: {entry.title}")
+        except Exception as e:
+            print(f"❌ 处理 {url} 出错: {e}")
+
+# --- 3. 运行入口 ---
+if __name__ == "__main__":
+    if not os.path.exists(BASE): os.mkdir(BASE)
+    for section in secs:
+        if section.startswith('source'):
+            process_feed(section)
