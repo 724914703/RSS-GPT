@@ -9,7 +9,6 @@ import re
 import datetime
 import requests
 from fake_useragent import UserAgent
-#from dateutil.parser import parse
 
 def get_cfg(sec, name, default=None):
     value=config.get(sec, name, fallback=default)
@@ -19,7 +18,6 @@ def get_cfg(sec, name, default=None):
 config = configparser.ConfigParser()
 config.read('config.ini')
 secs = config.sections()
-# Maxnumber of entries to in a feed.xml file
 max_entries = 1000
 
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
@@ -27,15 +25,39 @@ U_NAME = os.environ.get('U_NAME')
 OPENAI_PROXY = os.environ.get('OPENAI_PROXY')
 OPENAI_BASE_URL = os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
 custom_model = os.environ.get('CUSTOM_MODEL')
+# 获取企业微信 Webhook
+WECHAT_WEBHOOK = os.environ.get('WECHAT_WEBHOOK')
+
 deployment_url = f'https://{U_NAME}.github.io/RSS-GPT/'
-BASE =get_cfg('cfg', 'BASE')
+BASE = get_cfg('cfg', 'BASE')
 keyword_length = int(get_cfg('cfg', 'keyword_length'))
-_length = int(get_cfg('cfg', 'summary_length'))
+summary_length = int(get_cfg('cfg', 'summary_length'))
 language = get_cfg('cfg', 'language')
+
+def send_wechat_message(title, link, summary):
+    """新增：发送消息到企业微信机器人"""
+    if not WECHAT_WEBHOOK:
+        return
+    
+    # 清理一下总结中的 HTML 换行符，方便微信展示
+    clean_summary = summary.replace('<br>', '\n').replace('总结:', '📌 深度总结:')
+    
+    content = f"🎨 **设计总监 AI 简报**\n\n" \
+              f"🔗 **标题**: {title}\n" \
+              f"🌐 **原文**: {link}\n" \
+              f"{clean_summary}"
+    
+    data = {
+        "msgtype": "markdown",
+        "markdown": {"content": content}
+    }
+    try:
+        requests.post(WECHAT_WEBHOOK, json=data, timeout=10)
+    except Exception as e:
+        print(f"推送微信失败: {e}")
 
 def fetch_feed(url, log_file):
     feed = None
-    response = None
     headers = {}
     try:
         ua = UserAgent()
@@ -44,13 +66,8 @@ def fetch_feed(url, log_file):
         if response.status_code == 200:
             feed = feedparser.parse(response.text)
             return {'feed': feed, 'status': 'success'}
-        else:
-            with open(log_file, 'a') as f:
-                f.write(f"Fetch error: {response.status_code}\n")
-            return {'feed': None, 'status': response.status_code}
-    except requests.RequestException as e:
-        with open(log_file, 'a') as f:
-            f.write(f"Fetch error: {e}\n")
+        return {'feed': None, 'status': response.status_code}
+    except Exception as e:
         return {'feed': None, 'status': 'failed'}
 
 def generate_untitled(entry):
@@ -59,318 +76,92 @@ def generate_untitled(entry):
         try: return entry.article[:50]
         except: return entry.link
 
-
 def clean_html(html_content):
-    """
-    This function is used to clean the HTML content.
-    It will remove all the <script>, <style>, <img>, <a>, <video>, <audio>, <iframe>, <input> tags.
-    Returns:
-        Cleaned text for summarization
-    """
     soup = BeautifulSoup(html_content, "html.parser")
-
-    for script in soup.find_all("script"):
-        script.decompose()
-
-    for style in soup.find_all("style"):
-        style.decompose()
-
-    for img in soup.find_all("img"):
-        img.decompose()
-
-    for a in soup.find_all("a"):
-        a.decompose()
-
-    for video in soup.find_all("video"):
-        video.decompose()
-
-    for audio in soup.find_all("audio"):
-        audio.decompose()
-    
-    for iframe in soup.find_all("iframe"):
-        iframe.decompose()
-    
-    for input in soup.find_all("input"):
-        input.decompose()
-
+    for s in ["script", "style", "img", "a", "video", "audio", "iframe", "input"]:
+        for t in soup.find_all(s): t.decompose()
     return soup.get_text()
 
 def filter_entry(entry, filter_apply, filter_type, filter_rule):
-    """
-    This function is used to filter the RSS feed.
+    if filter_apply == 'title': text = entry.title
+    elif filter_apply == 'article': text = entry.article
+    elif filter_apply == 'link': text = entry.link
+    elif not filter_apply: return True
+    else: return True
 
-    Args:
-        entry: RSS feed entry
-        filter_apply: title, article or link
-        filter_type: include or exclude or regex match or regex not match
-        filter_rule: regex rule or keyword rule, depends on the filter_type
-
-    Raises:
-        Exception: filter_apply not supported
-        Exception: filter_type not supported
-    """
-    if filter_apply == 'title':
-        text = entry.title
-    elif filter_apply == 'article':
-        text = entry.article
-    elif filter_apply == 'link':
-        text = entry.link
-    elif not filter_apply:
-        return True
-    else:
-        raise Exception('filter_apply not supported')
-
-    if filter_type == 'include':
-        return re.search(filter_rule, text)
-    elif filter_type == 'exclude':
-        return not re.search(filter_rule, text)
-    elif filter_type == 'regex match':
-        return re.search(filter_rule, text)
-    elif filter_type == 'regex not match':
-        return not re.search(filter_rule, text)
-    elif not filter_type:
-        return True
-    else:
-        raise Exception('filter_type not supported')
+    if filter_type == 'include': return re.search(filter_rule, text)
+    elif filter_type == 'exclude': return not re.search(filter_rule, text)
+    return True
 
 def read_entry_from_file(sec):
-    """
-    This function is used to read the RSS feed entries from the feed.xml file.
-
-    Args:
-        sec: section name in config.ini
-    """
     out_dir = os.path.join(BASE, get_cfg(sec, 'name'))
     try:
         with open(out_dir + '.xml', 'r') as f:
             rss = f.read()
-        feed = feedparser.parse(rss)
-        return feed.entries
-    except:
-        return []
+        return feedparser.parse(rss).entries
+    except: return []
 
-def truncate_entries(entries, max_entries):
-    if len(entries) > max_entries:
-        entries = entries[:max_entries]
-    return entries
-
-def gpt_summary(query,model,language):
-    if language == "zh":
-        messages = [
-            {"role": "user", "content": query},
-            {"role": "assistant", "content": f"""你现在是一位拥有10年经验的资深设计总监和AI原住民。
+def gpt_summary(query, model, language):
+    system_prompt = f"""你现在是一位拥有10年经验的资深设计总监和AI原住民。
 请用中文深度总结这篇文章：
-1. 提炼最新AI工具及其对设计的核心突破
-2. 拆解文中提到的高效工作流
-3. 分析该技术对设计师职业的影响并给出行动建议。请使用专业的中文
-先提取出{keyword_length}个关键词在同一行，然后换行，在{summary_length}字内按上述要点输出。
-输出格式要求：必须以 '<br><br>总结:' 开头（保留这两个HTML换行符）。"""}
-        ]
-    else:
-        messages = [
-            {"role": "user", "content": query},
-            {"role": "assistant", "content": f"Please summarize this article in {language} language, first extract {keyword_length} keywords, output in the same line, then line break, write a summary containing all the points in {summary_length} words in {language}, output in order by points, and output in the following format '<br><br>Summary:' , <br> is the line break of HTML, 2 must be retained when output, and must be before the word 'Summary:'"}
-        ]
-    if not OPENAI_PROXY:
-        client = OpenAI(
-            api_key=OPENAI_API_KEY,
-            base_url=OPENAI_BASE_URL,
-        )
-    else:
-        client = OpenAI(
-            api_key=OPENAI_API_KEY,
-            # Or use the `OPENAI_BASE_URL` env var
-            base_url=OPENAI_BASE_URL,
-            # example: "http://my.test.server.example.com:8083",
-            http_client=httpx.Client(proxy=OPENAI_PROXY),
-            # example:"http://my.test.proxy.example.com",
-        )
-    completion = client.chat.completions.create(
-        model=model,
-        messages=messages,
-    )
+1. 【最新AI消息】：提炼核心技术突破点。
+2. 【实用工作流】：拆解“输入-处理-输出”的具体步骤。
+3. 【行业思考】：分析该动态对设计师是替代还是赋能？给出行动建议。
+先提取{keyword_length}个关键词在同一行，然后在{summary_length}字内按点输出。
+必须以 '<br><br>总结:' 开头。"""
+
+    messages = [{"role": "user", "content": f"{system_prompt}\n\n文章内容: {query}"}]
+    
+    client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+    completion = client.chat.completions.create(model=model, messages=messages)
     return completion.choices[0].message.content
 
 def output(sec, language):
-    """ output
-    This function is used to output the summary of the RSS feed.
-
-    Args:
-        sec: section name in config.ini
-
-    Raises:
-        Exception: filter_apply, type, rule must be set together in config.ini
-    """
     log_file = os.path.join(BASE, get_cfg(sec, 'name') + '.log')
     out_dir = os.path.join(BASE, get_cfg(sec, 'name'))
-    # read rss_url as a list separated by comma
-    rss_urls = get_cfg(sec, 'url')
-    rss_urls = rss_urls.split(',')
-
-    # RSS feed filter apply, filter title, article or link, summarize title, article or link
-    filter_apply = get_cfg(sec, 'filter_apply')
-
-    # RSS feed filter type, include or exclude or regex match or regex not match
-    filter_type = get_cfg(sec, 'filter_type')
-
-    # Regex rule or keyword rule, depends on the filter_type
-    filter_rule = get_cfg(sec, 'filter_rule')
-
-    # filter_apply, type, rule must be set together
-    if filter_apply and filter_type and filter_rule:
-        pass
-    elif not filter_apply and not filter_type and not filter_rule:
-        pass
-    else:
-        raise Exception('filter_apply, type, rule must be set together')
-
-    # Max number of items to summarize
-    max_items = get_cfg(sec, 'max_items')
-    if not max_items:
-        max_items = 0
-    else:
-        max_items = int(max_items)
-    cnt = 0
+    rss_urls = get_cfg(sec, 'url').split(',')
+    max_items = int(get_cfg(sec, 'max_items') or 0)
+    
     existing_entries = read_entry_from_file(sec)
-    with open(log_file, 'a') as f:
-        f.write('------------------------------------------------------\n')
-        f.write(f'Started: {datetime.datetime.now()}\n')
-        f.write(f'Existing_entries: {len(existing_entries)}\n')
-    existing_entries = truncate_entries(existing_entries, max_entries=max_entries)
-    # Be careful when the deleted ones are still in the feed, in that case, you will mess up the order of the entries.
-    # Truncating old entries is for limiting the file size, 1000 is a safe number to avoid messing up the order.
+    existing_links = [x.link for x in existing_entries]
     append_entries = []
+    cnt = 0
 
     for rss_url in rss_urls:
-        with open(log_file, 'a') as f:
-            f.write(f"Fetching from {rss_url}\n")
-            print(f"Fetching from {rss_url}")
         feed = fetch_feed(rss_url, log_file)['feed']
-        if not feed:
-            with open(log_file, 'a') as f:
-                f.write(f"Fetch failed from {rss_url}\n")
-            continue
+        if not feed: continue
+        
         for entry in feed.entries:
-            if cnt > max_entries:
-                with open(log_file, 'a') as f:
-                    f.write(f"Skip from: [{entry.title}]({entry.link})\n")
-                break
-
-            if entry.link.find('#replay') and entry.link.find('v2ex'):
-                entry.link = entry.link.split('#')[0]
-
-            if entry.link in [x.link for x in existing_entries]:
-                continue
-
-            if entry.link in [x.link for x in append_entries]:
-                continue
-
+            if entry.link in existing_links or cnt >= max_items: continue
+            
             entry.title = generate_untitled(entry)
-
-            try:
-                entry.article = entry.content[0].value
-            except:
-                try: entry.article = entry.description
-                except: entry.article = entry.title
+            try: entry.article = entry.content[0].value
+            except: entry.article = getattr(entry, 'description', entry.title)
 
             cleaned_article = clean_html(entry.article)
+            
+            # AI 总结
+            try:
+                model_to_use = custom_model if custom_model else "gpt-4o-mini"
+                entry.summary = gpt_summary(cleaned_article, model_to_use, language)
+                
+                # ✨ 核心改进：只要有新内容，立刻发微信
+                send_wechat_message(entry.title, entry.link, entry.summary)
+                
+                append_entries.append(entry)
+                cnt += 1
+            except Exception as e:
+                print(f"总结失败: {e}")
 
-            if not filter_entry(entry, filter_apply, filter_type, filter_rule):
-                with open(log_file, 'a') as f:
-                    f.write(f"Filter: [{entry.title}]({entry.link})\n")
-                continue
-
-
-#            # format to Thu, 27 Jul 2023 13:13:42 +0000
-#            if 'updated' in entry:
-#                entry.updated = parse(entry.updated).strftime('%a, %d %b %Y %H:%M:%S %z')
-#            if 'published' in entry:
-#                entry.published = parse(entry.published).strftime('%a, %d %b %Y %H:%M:%S %z')
-
-            cnt += 1
-            if cnt > max_items:
-                entry.summary = None
-            elif OPENAI_API_KEY:
-                token_length = len(cleaned_article)
-                if custom_model:
-                    try:
-                        entry.summary = gpt_summary(cleaned_article,model=custom_model, language=language)
-                        with open(log_file, 'a') as f:
-                            f.write(f"Token length: {token_length}\n")
-                            f.write(f"Summarized using {custom_model}\n")
-                    except Exception as e:
-                        entry.summary = None
-                        with open(log_file, 'a') as f:
-                            f.write(f"Summarization failed, append the original article\n")
-                            f.write(f"error: {e}\n")
-                else:
-                    try:
-                        entry.summary = gpt_summary(cleaned_article,model="gpt-4o-mini", language=language)
-                        with open(log_file, 'a') as f:
-                            f.write(f"Token length: {token_length}\n")
-                            f.write(f"Summarized using gpt-4o-mini\n")
-                    except:
-                        try:
-                            entry.summary = gpt_summary(cleaned_article,model="gpt-4o", language=language)
-                            with open(log_file, 'a') as f:
-                                f.write(f"Token length: {token_length}\n")
-                                f.write(f"Summarized using GPT-4o\n")
-                        except Exception as e:
-                            entry.summary = None
-                            with open(log_file, 'a') as f:
-                                f.write(f"Summarization failed, append the original article\n")
-                                f.write(f"error: {e}\n")
-
-            append_entries.append(entry)
-            with open(log_file, 'a') as f:
-                f.write(f"Append: [{entry.title}]({entry.link})\n")
-
-    with open(log_file, 'a') as f:
-        f.write(f'append_entries: {len(append_entries)}\n')
-
-    template = Template(open('template.xml').read())
-    
-    try:
+    # 渲染 XML (保持网页更新)
+    if append_entries:
+        template = Template(open('template.xml').read())
         rss = template.render(feed=feed, append_entries=append_entries, existing_entries=existing_entries)
-        with open(out_dir + '.xml', 'w') as f:
-            f.write(rss)
-        with open(log_file, 'a') as f:
-            f.write(f'Finish: {datetime.datetime.now()}\n')
-    except:
-        with open (log_file, 'a') as f:
-            f.write(f"error when rendering xml, skip {out_dir}\n")
-            print(f"error when rendering xml, skip {out_dir}\n")
+        with open(out_dir + '.xml', 'w') as f: f.write(rss)
 
-try:
-    os.mkdir(BASE)
-except:
-    pass
-
-feeds = []
-links = []
+# 启动执行
+try: os.mkdir(BASE)
+except: pass
 
 for x in secs[1:]:
     output(x, language=language)
-    feed = {"url": get_cfg(x, 'url').replace(',','<br>'), "name": get_cfg(x, 'name')}
-    feeds.append(feed)  # for rendering index.html
-    links.append("- "+ get_cfg(x, 'url').replace(',',', ') + " -> " + deployment_url + feed['name'] + ".xml\n")
-
-def append_readme(readme, links):
-    with open(readme, 'r') as f:
-        readme_lines = f.readlines()
-    while readme_lines[-1].startswith('- ') or readme_lines[-1] == '\n':
-        readme_lines = readme_lines[:-1]  # remove 1 line from the end for each feed
-    readme_lines.append('\n')
-    readme_lines.extend(links)
-    with open(readme, 'w') as f:
-        f.writelines(readme_lines)
-
-append_readme("README.md", links)
-append_readme("README-zh.md", links)
-
-# Rendering index.html used in my GitHub page, delete this if you don't need it.
-# Modify template.html to change the style
-with open(os.path.join(BASE, 'index.html'), 'w') as f:
-    template = Template(open('template.html').read())
-    html = template.render(update_time=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), feeds=feeds)
-    f.write(html)
